@@ -1,0 +1,2 @@
+CREATE TABLE IF NOT EXISTS roles(id SMALLINT PRIMARY KEY,name VARCHAR(20) UNIQUE NOT NULL,label VARCHAR(50) NOT NULL);
+INSERT INTO roles VALUES(1,'viewer','Viewer'),(2,'analyst','Analyst'),(3,'admin','Admin') ON CONFLICT DO NOTHING;
