@@ -1,0 +1,48 @@
+package config
+
+import (
+	"errors"
+	"os"
+	"time"
+
+	"github.com/joho/godotenv"
+)
+
+type Config struct {
+	DBHost, DBPort, DBUser, DBPassword, DBName, DBSSLMode string
+	JWTSecret                                             string
+	JWTAccessExpiry, JWTRefreshExpiry                     time.Duration
+	ServerPort, AppEnv                                    string
+}
+
+var C Config
+
+func Load() error {
+	_ = godotenv.Load()
+	if os.Getenv("JWT_SECRET") == "" || os.Getenv("DB_HOST") == "" {
+		return errors.New("JWT_SECRET and DB_HOST are required")
+	}
+	ae, _ := time.ParseDuration(getEnv("JWT_ACCESS_EXPIRY", "15m"))
+	re, _ := time.ParseDuration(getEnv("JWT_REFRESH_EXPIRY", "168h"))
+	C = Config{
+		DBHost:          os.Getenv("DB_HOST"),
+		DBPort:          getEnv("DB_PORT", "5432"),
+		DBUser:          os.Getenv("DB_USER"),
+		DBPassword:      os.Getenv("DB_PASSWORD"),
+		DBName:          os.Getenv("DB_NAME"),
+		DBSSLMode:       getEnv("DB_SSLMODE", "disable"),
+		JWTSecret:       os.Getenv("JWT_SECRET"),
+		JWTAccessExpiry: ae,
+		JWTRefreshExpiry: re,
+		ServerPort:      getEnv("SERVER_PORT", "8080"),
+		AppEnv:          getEnv("APP_ENV", "development"),
+	}
+	return nil
+}
+
+func getEnv(k, fb string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return fb
+}
