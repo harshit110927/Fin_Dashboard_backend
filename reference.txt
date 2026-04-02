@@ -1,0 +1,424 @@
+CREATE VIEW vw_record_details AS
+SELECT fr.id, fr.amount, fr.type, fr.status, fr.date, fr.description,
+       fr.created_at, fr.updated_at,
+       c.name AS category_name, c.id AS category_id,
+       u.name AS created_by_name, fr.created_by AS created_by_id
+FROM financial_records fr
+JOIN categories c ON c.id = fr.category_id
+JOIN users u ON u.id = fr.created_by
+WHERE fr.deleted_at IS NULL;
+
+CREATE MATERIALIZED VIEW mvw_monthly_summary AS
+SELECT DATE_TRUNC('month', date) AS month, type,
+       SUM(amount) AS total, COUNT(*) AS record_count
+FROM financial_records
+WHERE deleted_at IS NULL AND status = 'active'
+GROUP BY DATE_TRUNC('month', date), type
+ORDER BY month DESC;
+CREATE UNIQUE INDEX ON mvw_monthly_summary(month, type);
+
+CREATE MATERIALIZED VIEW mvw_category_totals AS
+SELECT c.id AS category_id, c.name AS category_name, c.type,
+       COALESCE(SUM(fr.amount), 0) AS total, COUNT(fr.id) AS record_count
+FROM categories c
+LEFT JOIN financial_records fr ON fr.category_id = c.id
+    AND fr.deleted_at IS NULL AND fr.status = 'active'
+GROUP BY c.id, c.name, c.type;
+CREATE UNIQUE INDEX ON mvw_category_totals(category_id);
+```
+
+**Makefile migration target:**
+```
+Tell the AI: Add a `make migrate` target in Makefile that runs all .sql files
+in internal/db/migrations/ in order against the DB using psql and the
+DB_URL built from .env variables.
+```
+
+---
+
+## STEP 5 — Domain Structs
+
+**File:** `internal/domain/user.go`
+```
+Tell the AI: Define these Go structs (no DB tags, pure domain):
+- User: ID(string), Name, Email, PasswordHash, RoleID(int), RoleName(string), IsActive(bool), CreatedAt, UpdatedAt, DeletedAt
+- CreateUserRequest: Name, Email, Password, Role — with validate tags (required, email, min=8 for password, oneof=viewer analyst admin for role)
+- UpdateUserRequest: Name(optional), Email(optional)
+- UpdateRoleRequest: Role string, validate oneof=viewer analyst admin
+- UserResponse: same as User but no PasswordHash field — this is what APIs return
+```
+
+**File:** `internal/domain/record.go`
+```
+Tell the AI: Define these Go structs:
+- FinancialRecord: ID, Amount(float64), Type, CategoryID(int), CategoryName, Date(string), Description, Status, CreatedBy, CreatedByName, CreatedAt, UpdatedAt
+- CreateRecordRequest: Amount(required,gt=0), Type(required,oneof=income expense), CategoryID(required), Date(required), Description(optional)
+- UpdateRecordRequest: Description(optional), CategoryID(optional), Date(optional) — no Amount, no Type fields at all
+- VoidRecordRequest: Reason string (required, min=10)
+- RecordFilter: Type, CategoryID, Status, DateFrom, DateTo, Sort, Page, PerPage
+```
+
+**File:** `internal/domain/dashboard.go`
+```
+Tell the AI: Define these structs:
+- DashboardSummary: TotalIncome, TotalExpenses, NetBalance(all float64), Period(struct with From and To string)
+- MonthlyTrend: Month(string), Income, Expenses, Net(all float64)
+- CategoryTotal: CategoryID(int), CategoryName, Type, Total(float64), RecordCount(int)
+- CategoryBreakdown: Income([]CategoryTotal), Expenses([]CategoryTotal)
+- RecentActivity: same fields as FinancialRecord response
+```
+
+---
+
+## STEP 6 — Standard Response Helper
+
+**File:** `pkg/response/response.go`
+```
+Tell the AI: Write helper functions for Gin:
+- Success(c *gin.Context, statusCode int, data interface{}) — writes {"success":true,"data":data}
+- SuccessPaginated(c, statusCode, data, page, perPage, total int) — adds "meta" key
+- Error(c, statusCode, code string, message string) — writes {"success":false,"error":{"code":"...","message":"..."}}
+- ValidationError(c, err error) — parses validator.ValidationErrors and formats field errors
+```
+
+---
+
+## STEP 7 — JWT Package
+
+**File:** `pkg/jwt/jwt.go`
+```
+Tell the AI: Write these functions using golang-jwt/jwt/v5:
+- GenerateAccessToken(userID string, role string, secret string, expiry time.Duration) (string, error)
+  Payload must include: user_id, role, exp, iat
+- GenerateRefreshToken(userID string, secret string, expiry time.Duration) (string, error)
+- ValidateToken(tokenString string, secret string) (*Claims, error)
+  Claims struct must expose UserID and Role fields
+```
+
+---
+
+## STEP 8 — Password Package
+
+**File:** `pkg/password/bcrypt.go`
+```
+Tell the AI: Write two functions:
+- Hash(plain string) (string, error) — uses bcrypt.GenerateFromPassword cost 12
+- Verify(plain, hashed string) bool — uses bcrypt.CompareHashAndPassword, returns bool
+```
+
+---
+
+## STEP 9 — Middleware
+
+**File:** `internal/middleware/auth.go`
+```
+Tell the AI: Write Gin middleware AuthRequired().
+- Extract Bearer token from Authorization header
+- Validate using pkg/jwt ValidateToken
+- If invalid or missing: return 401 using response.Error
+- If valid: set "user_id" and "role" in Gin context using c.Set()
+- Call c.Next()
+```
+
+**File:** `internal/middleware/role_guard.go`
+```
+Tell the AI: Write Gin middleware RoleGuard(allowedRoles ...string) gin.HandlerFunc
+- Read "role" from Gin context (set by AuthRequired)
+- Check if role is in allowedRoles
+- If not: return 403 with error code INSUFFICIENT_PERMISSIONS
+- If yes: c.Next()
+```
+
+**File:** `internal/middleware/request_logger.go`
+```
+Tell the AI: Write Gin middleware RequestLogger()
+- Log method, path, status code, latency, IP for every request
+- Use standard Go log package, format: [METHOD] /path | status | latency | IP
+```
+
+**File:** `internal/middleware/rate_limiter.go`
+```
+Tell the AI: Write a simple in-memory rate limiter middleware.
+- Allow max 100 requests per minute per IP
+- Use a map[string]*rateBucket with mutex for thread safety
+- Return 429 with error code RATE_LIMIT_EXCEEDED if exceeded
+- Clean up old buckets every 5 minutes in a goroutine
+```
+
+---
+
+## STEP 10 — Repositories
+
+**File:** `internal/repository/user_repo.go`
+```
+Tell the AI: Create UserRepository struct holding *sqlx.DB. Write these methods:
+- Create(ctx, user domain.User) error — INSERT INTO users
+- FindByEmail(ctx, email string) (*domain.User, error)
+- FindByID(ctx, id string) (*domain.User, error)
+- List(ctx, page, perPage int) ([]domain.UserResponse, int, error) — returns users + total count, excludes deleted
+- Update(ctx, id string, fields map[string]interface{}) error — dynamic update only provided fields + updated_at
+- UpdateRole(ctx, id string, roleID int) error
+- UpdateStatus(ctx, id string, isActive bool) error
+- SoftDelete(ctx, id string) error — sets deleted_at=NOW()
+```
+
+**File:** `internal/repository/record_repo.go`
+```
+Tell the AI: Create RecordRepository struct. Write these methods:
+- Create(ctx, record domain.FinancialRecord) (*domain.FinancialRecord, error)
+  After insert, call refreshMaterializedViews(ctx)
+- FindByID(ctx, id string) (*domain.FinancialRecord, error) — query vw_record_details
+- List(ctx, filter domain.RecordFilter) ([]domain.FinancialRecord, int, error)
+  Query vw_record_details with dynamic WHERE clause built from filter fields. Support pagination.
+- Update(ctx, id string, req domain.UpdateRecordRequest, updatedBy string) error
+  Only update description, category_id, date, updated_by, updated_at. After update call refreshMaterializedViews.
+- SoftDelete(ctx, id string, deletedBy string) error — sets deleted_at. Then refreshMaterializedViews.
+- Void(ctx, id string, actorID string) error — sets status='void'. Then refreshMaterializedViews.
+- refreshMaterializedViews(ctx) — runs REFRESH MATERIALIZED VIEW CONCURRENTLY on both mat views
+```
+
+**File:** `internal/repository/audit_repo.go`
+```
+Tell the AI: Create AuditRepository. Write one method:
+- Log(ctx, entityType, entityID, action, actorID, ipAddress string, oldData, newData interface{}) error
+  Marshal oldData and newData to JSON. INSERT into audit_logs.
+```
+
+**File:** `internal/repository/dashboard_repo.go`
+```
+Tell the AI: Create DashboardRepository. Write these methods:
+- GetSummary(ctx, from, to string) (*domain.DashboardSummary, error)
+  Query financial_records with SUM(amount) WHERE type='income' and WHERE type='expense' filtered by date range. Calculate net in Go.
+- GetMonthlyTrends(ctx) ([]domain.MonthlyTrend, error)
+  Query mvw_monthly_summary, pivot income/expense rows into MonthlyTrend structs per month.
+- GetCategoryTotals(ctx) (*domain.CategoryBreakdown, error)
+  Query mvw_category_totals, split into Income and Expenses slices.
+- GetRecentActivity(ctx, limit int) ([]domain.FinancialRecord, error)
+  Query vw_record_details ORDER BY created_at DESC LIMIT limit.
+```
+
+**File:** `internal/repository/token_repo.go`
+```
+Tell the AI: Create TokenRepository. Write:
+- Store(ctx, userID, tokenHash string, expiresAt time.Time) error
+- FindByHash(ctx, tokenHash string) (*RefreshToken, error) — returns token row
+- Revoke(ctx, tokenHash string) error — sets revoked=true
+- CleanExpired(ctx) error — deletes rows where expires_at < NOW()
+```
+
+---
+
+## STEP 11 — Services
+
+**File:** `internal/service/auth_service.go`
+```
+Tell the AI: Create AuthService with UserRepo, TokenRepo, config injected.
+Write:
+- Register(ctx, req CreateUserRequest) (*UserResponse, error)
+  Hash password. Check email not already taken. Insert user with role_id=1(viewer). Return UserResponse.
+- Login(ctx, email, password string) (accessToken, refreshToken string, user UserResponse, error)
+  Find user by email. Verify password. Generate both tokens. Store refresh token hash in DB. Return tokens + user.
+- Refresh(ctx, refreshToken string) (newAccessToken string, error)
+  Hash incoming token. Find in DB. Check not revoked, not expired. Generate new access token. Return it.
+- Logout(ctx, refreshToken string) error
+  Hash token. Revoke in DB.
+```
+
+**File:** `internal/service/user_service.go`
+```
+Tell the AI: Create UserService with UserRepo and AuditRepo injected.
+Write:
+- List(ctx, page, perPage int) ([]UserResponse, total int, error)
+- GetByID(ctx, id string) (*UserResponse, error)
+- Create(ctx, req CreateUserRequest, actorID string) (*UserResponse, error)
+  Hash password. Insert. Write audit log action=CREATE.
+- Update(ctx, id string, req UpdateUserRequest, actorID string) (*UserResponse, error)
+  Fetch old data. Update. Write audit log with old_data and new_data.
+- UpdateRole(ctx, id string, role string, actorID string) error
+  Map role string to role_id. Update. Write audit log.
+- UpdateStatus(ctx, id string, isActive bool, actorID string) error
+- Delete(ctx, id string, actorID string) error
+  Soft delete. Write audit log action=DELETE.
+```
+
+**File:** `internal/service/record_service.go`
+```
+Tell the AI: Create RecordService with RecordRepo and AuditRepo injected.
+Write:
+- Create(ctx, req CreateRecordRequest, actorID string) (*FinancialRecord, error)
+  Build record struct. Insert via repo. Write audit log action=CREATE.
+- GetByID(ctx, id string) (*FinancialRecord, error)
+- List(ctx, filter RecordFilter) ([]FinancialRecord, int, error)
+- Update(ctx, id string, req UpdateRecordRequest, actorID string) error
+  IMPORTANT: if req contains amount or type fields, return error IMMUTABLE_FIELD.
+  Fetch old record. Update via repo. Write audit log with old and new snapshots.
+- Delete(ctx, id string, actorID string) error
+  Fetch record. Soft delete. Write audit log action=DELETE.
+- Void(ctx, id string, reason string, actorID string) error
+  Fetch record. Check it is not already void. Set status=void. Write audit log action=VOID with reason in new_data.
+```
+
+**File:** `internal/service/dashboard_service.go`
+```
+Tell the AI: Create DashboardService with DashboardRepo injected.
+Write:
+- GetSummary(ctx, from, to string) (*DashboardSummary, error) — delegates to repo
+- GetTrends(ctx) ([]MonthlyTrend, error) — delegates to repo
+- GetCategoryBreakdown(ctx) (*CategoryBreakdown, error) — delegates to repo
+- GetRecentActivity(ctx, limit int) ([]FinancialRecord, error)
+  Validate limit max 50. Delegate to repo.
+```
+
+---
+
+## STEP 12 — Handlers
+
+**File:** `internal/handler/auth_handler.go`
+```
+Tell the AI: Create AuthHandler with AuthService injected.
+Write Gin handler funcs:
+- Register: bind+validate CreateUserRequest, call service.Register, return 201
+- Login: bind+validate, call service.Login, return 200 with tokens+user
+- Refresh: read refresh_token from JSON body, call service.Refresh, return 200 with new access_token
+- Logout: read refresh_token, call service.Logout, return 200
+```
+
+**File:** `internal/handler/user_handler.go`
+```
+Tell the AI: Create UserHandler with UserService injected.
+Write Gin handler funcs for all user routes.
+Always extract actorID from c.MustGet("user_id") for audit trail.
+Use response helpers for all responses.
+```
+
+**File:** `internal/handler/record_handler.go`
+```
+Tell the AI: Create RecordHandler with RecordService injected.
+Write Gin handler funcs:
+- List: parse all query params into RecordFilter struct, call service.List, return paginated response
+- GetByID: get id from URL param, call service.GetByID
+- Create: bind+validate CreateRecordRequest, extract actorID from context, call service.Create, return 201
+- Update: bind UpdateRecordRequest (no amount/type fields), call service.Update
+- Delete: call service.Delete with actorID
+- Void: bind VoidRecordRequest, call service.Void with actorID
+```
+
+**File:** `internal/handler/dashboard_handler.go`
+```
+Tell the AI: Create DashboardHandler with DashboardService injected.
+Write handler funcs:
+- Summary: parse optional ?from and ?to query params (default to first and last day of current month if missing), call service.GetSummary
+- Trends: call service.GetTrends
+- Categories: call service.GetCategoryBreakdown
+- Recent: parse ?limit param (default 10, max 50), call service.GetRecentActivity
+```
+
+**File:** `internal/handler/category_handler.go`
+```
+Tell the AI: Create CategoryHandler. Write handlers for List, Create, Update categories.
+Store categories in a simple categories table queried via a CategoryRepository.
+```
+
+---
+
+## STEP 13 — Router
+
+**File:** `internal/router/router.go`
+```
+Tell the AI: Create SetupRouter(deps *Dependencies) *gin.Engine function.
+Dependencies struct holds all handlers and config.
+Apply global middleware: RequestLogger, RateLimiter.
+Define routes exactly as follows:
+
+POST   /api/v1/auth/register         → authHandler.Register       (public)
+POST   /api/v1/auth/login            → authHandler.Login           (public)
+POST   /api/v1/auth/refresh          → authHandler.Refresh         (public)
+POST   /api/v1/auth/logout           → AuthRequired               → authHandler.Logout
+
+GET    /api/v1/users                 → AuthRequired, RoleGuard(admin) → userHandler.List
+GET    /api/v1/users/:id             → AuthRequired, RoleGuard(admin) → userHandler.GetByID
+POST   /api/v1/users                 → AuthRequired, RoleGuard(admin) → userHandler.Create
+PATCH  /api/v1/users/:id             → AuthRequired, RoleGuard(admin) → userHandler.Update
+PATCH  /api/v1/users/:id/role        → AuthRequired, RoleGuard(admin) → userHandler.UpdateRole
+PATCH  /api/v1/users/:id/status      → AuthRequired, RoleGuard(admin) → userHandler.UpdateStatus
+DELETE /api/v1/users/:id             → AuthRequired, RoleGuard(admin) → userHandler.Delete
+
+GET    /api/v1/records               → AuthRequired, RoleGuard(viewer,analyst,admin) → recordHandler.List
+GET    /api/v1/records/:id           → AuthRequired, RoleGuard(viewer,analyst,admin) → recordHandler.GetByID
+POST   /api/v1/records               → AuthRequired, RoleGuard(admin) → recordHandler.Create
+PATCH  /api/v1/records/:id           → AuthRequired, RoleGuard(admin) → recordHandler.Update
+DELETE /api/v1/records/:id           → AuthRequired, RoleGuard(admin) → recordHandler.Delete
+POST   /api/v1/records/:id/void      → AuthRequired, RoleGuard(admin) → recordHandler.Void
+
+GET    /api/v1/dashboard/summary     → AuthRequired, RoleGuard(viewer,analyst,admin) → dashboardHandler.Summary
+GET    /api/v1/dashboard/trends      → AuthRequired, RoleGuard(analyst,admin)        → dashboardHandler.Trends
+GET    /api/v1/dashboard/categories  → AuthRequired, RoleGuard(viewer,analyst,admin) → dashboardHandler.Categories
+GET    /api/v1/dashboard/recent      → AuthRequired, RoleGuard(viewer,analyst,admin) → dashboardHandler.Recent
+
+GET    /api/v1/categories            → AuthRequired, RoleGuard(viewer,analyst,admin) → categoryHandler.List
+POST   /api/v1/categories            → AuthRequired, RoleGuard(admin) → categoryHandler.Create
+PATCH  /api/v1/categories/:id        → AuthRequired, RoleGuard(admin) → categoryHandler.Update
+```
+
+---
+
+## STEP 14 — Main Entry Point
+
+**File:** `cmd/server/main.go`
+```
+Tell the AI: Write main() that does exactly this in order:
+1. Call config.Load() — panic if error
+2. Call db.Connect(cfg) — panic if error
+3. Initialize all repositories (pass db)
+4. Initialize all services (pass repos)
+5. Initialize all handlers (pass services)
+6. Call router.SetupRouter with all handlers
+7. Log "Server starting on port X"
+8. Call router.Run(":"+cfg.ServerPort)
+```
+
+---
+
+## STEP 15 — Makefile
+```
+Tell the AI: Write a Makefile with these targets:
+- make run       → go run ./cmd/server/main.go
+- make build     → go build -o bin/server ./cmd/server
+- make migrate   → runs all SQL files in internal/db/migrations/ in order via psql
+- make tidy      → go mod tidy
+- make test      → go test ./...
+```
+
+---
+
+## STEP 16 — README
+```
+Tell the AI: Write a complete README.md with:
+1. Project overview (2-3 sentences about what this is)
+2. Tech stack list
+3. Prerequisites (Go 1.22+, PostgreSQL 14+)
+4. Setup instructions (clone, copy .env.example to .env, fill values, make migrate, make run)
+5. Role table (viewer/analyst/admin with their permissions)
+6. Complete API reference table (method, endpoint, role required, description) — all 24 endpoints
+7. Key design decisions section covering: NUMERIC for money, soft delete, void vs delete, materialized views, audit log, immutable amount/type fields
+8. Assumptions made
+```
+
+---
+
+## Execution Order for the Coding AI
+```
+1  → go.mod + dependencies
+2  → .env.example + config.go
+3  → postgres.go
+4  → all 7 migration SQL files
+5  → all domain structs
+6  → pkg/response, pkg/jwt, pkg/password
+7  → all 4 middleware files
+8  → all 5 repository files
+9  → all 4 service files
+10 → all 5 handler files
+11 → router.go
+12 → main.go
+13 → Makefile
+14 → README.md
