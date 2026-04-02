@@ -7,7 +7,7 @@ import (
 	"finance-dashboard/internal/middleware"
 )
 
-func SetupRouter(authH *handler.AuthHandler, userH *handler.UserHandler, recH *handler.RecordHandler, dashH *handler.DashboardHandler) *gin.Engine {
+func SetupRouter(authH *handler.AuthHandler, userH *handler.UserHandler, recH *handler.RecordHandler, dashH *handler.DashboardHandler, categoryH *handler.CategoryHandler) *gin.Engine {
 	r := gin.New()
 	r.Use(middleware.RequestLogger())
 	r.Use(middleware.RateLimiter())
@@ -58,8 +58,9 @@ func SetupRouter(authH *handler.AuthHandler, userH *handler.UserHandler, recH *h
 	// Category routes
 	categories := v1.Group("/categories", middleware.AuthRequired())
 	{
-		categories.GET("/", middleware.RoleGuard("viewer", "analyst", "admin"), dashH.ListCategories)
-		categories.POST("/", middleware.RoleGuard("admin"), dashH.CreateCategory)
+		categories.GET("/", middleware.RoleGuard("viewer", "analyst", "admin"), categoryH.List)
+		categories.POST("/", middleware.RoleGuard("admin"), categoryH.Create)
+		categories.PATCH("/:id", middleware.RoleGuard("admin"), categoryH.Update)
 	}
 
 	return r

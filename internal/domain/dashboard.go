@@ -41,3 +41,9 @@ type CreateCategoryRequest struct {
 	Name string `json:"name" validate:"required,min=2,max=80"`
 	Type string `json:"type" validate:"required,oneof=income expense"`
 }
+
+type UpdateCategoryRequest struct {
+	Name     *string `json:"name" validate:"omitempty,min=2,max=80"`
+	Type     *string `json:"type" validate:"omitempty,oneof=income expense"`
+	IsActive *bool   `json:"is_active"`
+}
