@@ -3,6 +3,7 @@ package repository
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/jmoiron/sqlx"
 
@@ -162,6 +163,56 @@ func (r *DashboardRepository) CreateCategory(name, typ string) (*domain.Category
 		RETURNING id, name, type, is_active`,
 		name, typ,
 	).Scan(&c.ID, &c.Name, &c.Type, &c.IsActive)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &c, nil
+}
+
+func (r *DashboardRepository) UpdateCategory(id int, req *domain.UpdateCategoryRequest) (*domain.Category, error) {
+	if req.Name == nil && req.Type == nil && req.IsActive == nil {
+		return r.FindCategoryByID(id)
+	}
+
+	query := "UPDATE categories SET updated_at = NOW()"
+	args := []interface{}{}
+	idx := 1
+
+	if req.Name != nil {
+		query += fmt.Sprintf(", name = $%d", idx)
+		args = append(args, *req.Name)
+		idx++
+	}
+	if req.Type != nil {
+		query += fmt.Sprintf(", type = $%d", idx)
+		args = append(args, *req.Type)
+		idx++
+	}
+	if req.IsActive != nil {
+		query += fmt.Sprintf(", is_active = $%d", idx)
+		args = append(args, *req.IsActive)
+		idx++
+	}
+	query += fmt.Sprintf(" WHERE id = $%d RETURNING id, name, type, is_active", idx)
+	args = append(args, id)
+
+	var c domain.Category
+	if err := r.db.QueryRowx(query, args...).Scan(&c.ID, &c.Name, &c.Type, &c.IsActive); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &c, nil
+}
+
+func (r *DashboardRepository) FindCategoryByID(id int) (*domain.Category, error) {
+	var c domain.Category
+	err := r.db.QueryRowx(`SELECT id, name, type, is_active FROM categories WHERE id = $1`, id).
+		Scan(&c.ID, &c.Name, &c.Type, &c.IsActive)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil

@@ -40,9 +40,10 @@ func main() {
 	userH := handler.NewUserHandler(userRepo, auditRepo)
 	recH := handler.NewRecordHandler(recordSvc)
 	dashH := handler.NewDashboardHandler(dashSvc)
+	categoryH := handler.NewCategoryHandler(dashSvc)
 
 	// 6. Start server
-	r := router.SetupRouter(authH, userH, recH, dashH)
+	r := router.SetupRouter(authH, userH, recH, dashH, categoryH)
 	log.Printf("server starting on :%s", config.C.ServerPort)
 	if err := r.Run(":" + config.C.ServerPort); err != nil {
 		log.Fatalf("server error: %v", err)

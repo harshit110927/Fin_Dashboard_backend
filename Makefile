@@ -7,7 +7,7 @@ run:
 	go run ./cmd/server/main.go
 
 build:
-	go build -o bin/server ./cmd/server/main.go
+	go build -o bin/server ./cmd/server
 
 migrate:
 	for f in internal/db/migrations/*.sql; do psql "$(DB_URL)" -f $$f; done
