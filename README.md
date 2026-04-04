@@ -85,3 +85,10 @@ A role-based finance dashboard backend built with Go, Gin, and PostgreSQL. It pr
 - Dates are exchanged as `YYYY-MM-DD` strings.
 - Auth middleware injects `user_id` and `role` into request context for protected routes.
 - Refresh token revocation is persisted in DB and access token is short-lived.
+
+## Extended setup and E2E guide
+
+For full setup using Supabase Postgres, dummy data seeding, and full end-to-end API testing steps, see:
+
+- [`docs/SUPABASE_SETUP_AND_E2E.md`](docs/SUPABASE_SETUP_AND_E2E.md)
+- Automated runner: `scripts/e2e-test.js` (Node.js 18+)
