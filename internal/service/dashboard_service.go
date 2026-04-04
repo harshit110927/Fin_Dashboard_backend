@@ -79,3 +79,7 @@ func (s *DashboardService) GetCategories() ([]domain.Category, error) {
 func (s *DashboardService) CreateCategory(req *domain.CreateCategoryRequest) (*domain.Category, error) {
 	return s.repo.CreateCategory(req.Name, req.Type)
 }
+
+func (s *DashboardService) UpdateCategory(id int, req *domain.UpdateCategoryRequest) (*domain.Category, error) {
+	return s.repo.UpdateCategory(id, req)
+}
