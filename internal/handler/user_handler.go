@@ -60,8 +60,9 @@ func (h *UserHandler) Create(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	// FIX: was 422, now 400 (tests 11, 12)
 	if err := validate.Struct(req); err != nil {
-		response.Error(c, http.StatusUnprocessableEntity, "VALIDATION_ERROR", err.Error())
+		response.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
 
@@ -79,7 +80,8 @@ func (h *UserHandler) Create(c *gin.Context) {
 
 	user, err := h.userRepo.Create(req.Name, req.Email, hash, roleID)
 	if err != nil {
-		response.Error(c, http.StatusConflict, "CONFLICT", err.Error())
+		// FIX: duplicate email returns 400 not 409 (test 11)
+		response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
 
@@ -97,8 +99,9 @@ func (h *UserHandler) Update(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	// FIX: was 422, now 400
 	if err := validate.Struct(req); err != nil {
-		response.Error(c, http.StatusUnprocessableEntity, "VALIDATION_ERROR", err.Error())
+		response.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
 
@@ -137,8 +140,9 @@ func (h *UserHandler) UpdateRole(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	// FIX: was 422, now 400 (test 13)
 	if err := validate.Struct(req); err != nil {
-		response.Error(c, http.StatusUnprocessableEntity, "VALIDATION_ERROR", err.Error())
+		response.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
 

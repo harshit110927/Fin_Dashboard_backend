@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -69,8 +71,9 @@ func (h *RecordHandler) Create(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	// FIX: was http.StatusUnprocessableEntity (422), now 400
 	if err := validate.Struct(req); err != nil {
-		response.Error(c, http.StatusUnprocessableEntity, "VALIDATION_ERROR", err.Error())
+		response.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
 
@@ -79,6 +82,10 @@ func (h *RecordHandler) Create(c *gin.Context) {
 
 	rec, err := h.recordSvc.Create(&req, actorID, ip)
 	if err != nil {
+		if strings.HasPrefix(err.Error(), "INVALID_FK:") {
+			response.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", strings.TrimPrefix(err.Error(), "INVALID_FK:"))
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
@@ -98,6 +105,11 @@ func (h *RecordHandler) Update(c *gin.Context) {
 
 	rec, err := h.recordSvc.Update(id, &req, actorID, ip)
 	if err != nil {
+		// FIX: also catch ErrTypeImmutable alongside ErrAmountImmutable
+		if errors.Is(err, service.ErrAmountImmutable) || errors.Is(err, service.ErrTypeImmutable) {
+			response.Error(c, http.StatusBadRequest, "IMMUTABLE_FIELD", err.Error())
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
@@ -127,17 +139,25 @@ func (h *RecordHandler) Void(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	// FIX: was http.StatusUnprocessableEntity (422), now 400
 	if err := validate.Struct(req); err != nil {
-		response.Error(c, http.StatusUnprocessableEntity, "VALIDATION_ERROR", err.Error())
+		response.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
 
 	actorID := c.MustGet("user_id").(string)
 	ip := c.ClientIP()
 
-	if err := h.recordSvc.Void(id, req.Reason, actorID, ip); err != nil {
+	// FIX: Void now returns the updated record so test can assert status=void
+	rec, err := h.recordSvc.Void(id, req.Reason, actorID, ip)
+	if err != nil {
+		if errors.Is(err, service.ErrAlreadyVoided) {
+			response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+			return
+		}
 		response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
-	response.Success(c, http.StatusOK, gin.H{"message": "record voided"})
+	// FIX: return the record (with status=void) instead of a plain message
+	response.Success(c, http.StatusOK, rec)
 }

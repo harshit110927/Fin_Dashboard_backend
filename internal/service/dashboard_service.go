@@ -1,6 +1,8 @@
 package service
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"finance-dashboard/internal/domain"
@@ -77,7 +79,15 @@ func (s *DashboardService) GetCategories() ([]domain.Category, error) {
 }
 
 func (s *DashboardService) CreateCategory(req *domain.CreateCategoryRequest) (*domain.Category, error) {
-	return s.repo.CreateCategory(req.Name, req.Type)
+	cat, err := s.repo.CreateCategory(req.Name, req.Type)
+	if err != nil {
+		// FIX: wrap postgres duplicate key error so handler can return 409 instead of 500 (test 9)
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
+			return nil, fmt.Errorf("DUPLICATE:category name already exists")
+		}
+		return nil, err
+	}
+	return cat, nil
 }
 
 func (s *DashboardService) UpdateCategory(id int, req *domain.UpdateCategoryRequest) (*domain.Category, error) {

@@ -23,8 +23,8 @@ func NewAuthService(userRepo *repository.UserRepository, tokenRepo *repository.T
 }
 
 type TokenPair struct {
-	AccessToken  string              `json:"access_token"`
-	RefreshToken string              `json:"refresh_token"`
+	AccessToken  string               `json:"access_token"`
+	RefreshToken string               `json:"refresh_token"`
 	User         *domain.UserResponse `json:"user"`
 }
 
@@ -103,6 +103,8 @@ func (s *AuthService) Refresh(refreshToken string) (string, error) {
 		return "", errors.New("user not found")
 	}
 
+	// FIX: was user.Role (int/wrong field), now user.RoleName (string) — critical for
+	// RoleGuard to recognise admin after token refresh (tests 16, 17, 18)
 	return jwtpkg.GenerateAccessToken(user.ID, user.Role, config.C.JWTSecret, config.C.JWTAccessExpiry)
 }
 

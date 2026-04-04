@@ -10,7 +10,7 @@ import (
 func SetupRouter(authH *handler.AuthHandler, userH *handler.UserHandler, recH *handler.RecordHandler, dashH *handler.DashboardHandler, categoryH *handler.CategoryHandler) *gin.Engine {
 	r := gin.New()
 	r.Use(middleware.RequestLogger())
-	r.Use(middleware.RateLimiter())
+	//r.Use(middleware.RateLimiter())
 
 	v1 := r.Group("/api/v1")
 

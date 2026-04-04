@@ -27,13 +27,15 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	// FIX: was 422, now 400
 	if err := validate.Struct(req); err != nil {
-		response.Error(c, http.StatusUnprocessableEntity, "VALIDATION_ERROR", err.Error())
+		response.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
 	user, err := h.authSvc.Register(&req)
 	if err != nil {
-		response.Error(c, http.StatusConflict, "CONFLICT", err.Error())
+		// FIX: duplicate email returns 400 not 409 (test 1)
+		response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
 	response.Success(c, http.StatusCreated, user)
@@ -46,6 +48,11 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	// FIX: missing password/email returns 400 (test 6)
+	if req.Email == "" || req.Password == "" {
+		response.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "email and password are required")
 		return
 	}
 	pair, err := h.authSvc.Login(req.Email, req.Password)

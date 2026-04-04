@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -19,6 +21,10 @@ func NewRecordService(repo *repository.RecordRepository, auditRepo *repository.A
 	return &RecordService{repo: repo, auditRepo: auditRepo}
 }
 
+var ErrAmountImmutable = errors.New("amount cannot be modified after a record is created")
+var ErrTypeImmutable = errors.New("type cannot be modified after a record is created")
+var ErrAlreadyVoided = errors.New("record is already voided")
+
 func (s *RecordService) Create(req *domain.CreateRecordRequest, actorID, ip string) (*domain.FinancialRecord, error) {
 	rec := &domain.FinancialRecord{
 		ID:          uuid.New().String(),
@@ -31,6 +37,10 @@ func (s *RecordService) Create(req *domain.CreateRecordRequest, actorID, ip stri
 	}
 	created, err := s.repo.Create(rec)
 	if err != nil {
+		// FIX: catch FK violation so handler can return 400 instead of 500 (test 10)
+		if strings.Contains(err.Error(), "foreign key constraint") {
+			return nil, fmt.Errorf("INVALID_FK:category_id %d does not exist", req.CategoryID)
+		}
 		return nil, err
 	}
 	_ = s.auditRepo.Log(context.Background(), "financial_record", created.ID, "CREATE", actorID, ip, nil, created)
@@ -46,6 +56,13 @@ func (s *RecordService) List(filter domain.RecordFilter) ([]domain.FinancialReco
 }
 
 func (s *RecordService) Update(id string, req *domain.UpdateRecordRequest, actorID, ip string) (*domain.FinancialRecord, error) {
+	if req.Amount != nil {
+		return nil, ErrAmountImmutable
+	}
+	if req.Type != nil {
+		return nil, ErrTypeImmutable
+	}
+
 	old, err := s.repo.FindByID(id)
 	if err != nil {
 		return nil, err
@@ -82,21 +99,22 @@ func (s *RecordService) Delete(id, actorID, ip string) error {
 	return nil
 }
 
-func (s *RecordService) Void(id, reason, actorID, ip string) error {
+func (s *RecordService) Void(id, reason, actorID, ip string) (*domain.FinancialRecord, error) {
 	rec, err := s.repo.FindByID(id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if rec == nil {
-		return nil
+		return nil, errors.New("record not found")
 	}
 	if rec.Status == "void" {
-		return errors.New("record is already voided")
+		return nil, ErrAlreadyVoided
 	}
 
 	if err := s.repo.Void(id); err != nil {
-		return err
+		return nil, err
 	}
 	_ = s.auditRepo.Log(context.Background(), "financial_record", id, "VOID", actorID, ip, rec, map[string]string{"reason": reason})
-	return nil
+
+	return s.repo.FindByID(id)
 }

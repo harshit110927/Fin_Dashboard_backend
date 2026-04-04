@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -34,13 +35,19 @@ func (h *CategoryHandler) Create(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	// FIX: was response.ValidationError (returned 422), now explicit 400
 	if err := validate.Struct(req); err != nil {
-		response.ValidationError(c, err)
+		response.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
 
 	cat, err := h.dashSvc.CreateCategory(&req)
 	if err != nil {
+		// FIX: catch duplicate name error → 409 instead of 500 (test 9)
+		if strings.HasPrefix(err.Error(), "DUPLICATE:") {
+			response.Error(c, http.StatusConflict, "CONFLICT", strings.TrimPrefix(err.Error(), "DUPLICATE:"))
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
@@ -59,8 +66,9 @@ func (h *CategoryHandler) Update(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
 	}
+	// FIX: was response.ValidationError (returned 422), now explicit 400
 	if err := validate.Struct(req); err != nil {
-		response.ValidationError(c, err)
+		response.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
 
