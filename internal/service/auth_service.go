@@ -104,9 +104,8 @@ func (s *AuthService) Refresh(refreshToken string) (string, error) {
 		return "", apperr.ErrNotFound
 	}
 
-	// FIX: was user.Role (int/wrong field), now user.RoleName (string) — critical for
-	// RoleGuard to recognise admin after token refresh (tests 16, 17, 18)
-	return jwtpkg.GenerateAccessToken(user.ID, user.Role, config.C.JWTSecret, config.C.JWTAccessExpiry)
+	roleName := user.Role
+	return jwtpkg.GenerateAccessToken(user.ID, roleName, config.C.JWTSecret, config.C.JWTAccessExpiry)
 }
 
 func (s *AuthService) Logout(refreshToken string) error {

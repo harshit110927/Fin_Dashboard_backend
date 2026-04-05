@@ -67,21 +67,31 @@ func (r *UserRepository) FindByEmail(email string) (*domain.User, error) {
 }
 
 func (r *UserRepository) FindByID(id string) (*domain.UserResponse, error) {
-	var u domain.UserResponse
+	var u domain.User
 	err := r.db.QueryRowx(`
-		SELECT u.id, u.name, u.email, ro.name AS role, u.is_active, u.created_at
+		SELECT u.id, u.name, u.email, u.password_hash, u.role_id,
+		       u.is_active, u.created_at, u.updated_at, u.deleted_at,
+		       ro.name AS role_name
 		FROM users u
 		JOIN roles ro ON ro.id = u.role_id
 		WHERE u.id = $1 AND u.deleted_at IS NULL`,
 		id,
-	).Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.IsActive, &u.CreatedAt)
+	).StructScan(&u)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, dberr.Translate(nil)
 		}
 		return nil, dberr.Translate(err)
 	}
-	return &u, dberr.Translate(nil)
+	resp := &domain.UserResponse{
+		ID:        u.ID,
+		Name:      u.Name,
+		Email:     u.Email,
+		Role:      u.RoleName,
+		IsActive:  u.IsActive,
+		CreatedAt: u.CreatedAt,
+	}
+	return resp, dberr.Translate(nil)
 }
 
 func (r *UserRepository) List(page, perPage int) ([]domain.UserResponse, int, error) {
