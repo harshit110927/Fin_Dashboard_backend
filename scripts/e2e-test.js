@@ -305,7 +305,7 @@ async function run() {
     });
     assert(res.data?.data?.access_token, 'Missing access_token in refresh response');
     // Update admin token to the freshest one
-    admin.access_token = res.data.data.access_token;
+    //admin.access_token = res.data.data.access_token;
   });
 
   await runTest('Invalid refresh token → 401', async () => {
