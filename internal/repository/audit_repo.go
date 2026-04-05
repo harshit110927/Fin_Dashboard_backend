@@ -1,3 +1,4 @@
+// Package repository implements data access using raw SQL via sqlx.
 package repository
 
 import (
@@ -5,6 +6,8 @@ import (
 	"encoding/json"
 
 	"github.com/jmoiron/sqlx"
+
+	"finance-dashboard/pkg/dberr"
 )
 
 type AuditRepository struct {
@@ -21,13 +24,13 @@ func (r *AuditRepository) Log(ctx context.Context, entityType, entityID, action,
 	if oldData != nil {
 		oldJSON, err = json.Marshal(oldData)
 		if err != nil {
-			return err
+			return dberr.Translate(err)
 		}
 	}
 	if newData != nil {
 		newJSON, err = json.Marshal(newData)
 		if err != nil {
-			return err
+			return dberr.Translate(err)
 		}
 	}
 
@@ -36,5 +39,19 @@ func (r *AuditRepository) Log(ctx context.Context, entityType, entityID, action,
 		VALUES ($1, $2::uuid, $3, $4::uuid, $5, $6, $7::inet)`,
 		entityType, entityID, action, actorID, oldJSON, newJSON, ip,
 	)
-	return err
+	return dberr.Translate(err)
+}
+
+// GetByEntity returns all audit log entries for a specific entity ordered most recent first.
+func (r *AuditRepository) GetByEntity(ctx context.Context, entityType, entityID string) ([]AuditEntry, error) {
+	var entries []AuditEntry
+	err := r.db.SelectContext(ctx, &entries,
+		`SELECT id, action, actor_id, old_data, new_data,
+		        COALESCE(ip_address::text, '') AS ip_address, created_at
+		 FROM audit_logs
+		 WHERE entity_type = $1 AND entity_id = $2
+		 ORDER BY created_at DESC`,
+		entityType, entityID,
+	)
+	return entries, dberr.Translate(err)
 }
