@@ -1,3 +1,4 @@
+// Package middleware provides composable Gin middleware functions.
 package middleware
 
 import (

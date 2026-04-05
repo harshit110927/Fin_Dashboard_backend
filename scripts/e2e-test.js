@@ -906,6 +906,57 @@ async function run() {
     });
   });
 
+
+  // ─── Step 5.5 · New endpoints ─────────────────────────────────────────────
+  beginStep('5.5 · Health check & record history');
+
+  await runTest('GET /health returns 200 with db=ok', async () => {
+    // Note: call without /api/v1 prefix
+    const res = await fetch(`${BASE_URL.replace('/api/v1', '')}/health`);
+    const data = await res.json();
+    assert(res.status === 200,        `Expected 200, got ${res.status}`);
+    assert(data.status === 'ok',      'Missing status=ok');
+    assert(data.db === 'ok',          'DB status not ok');
+    assert(data.timestamp,            'Missing timestamp');
+    assert(data.request_id,           'Missing request_id in health response');
+  });
+
+  await runTest('GET /health returns X-Request-ID header', async () => {
+    const res = await fetch(`${BASE_URL.replace('/api/v1', '')}/health`);
+    assert(res.headers.get('x-request-id'), 'Missing X-Request-ID response header');
+  });
+
+  await runTest('GET /records/:id/history returns audit trail → 200 (admin)', async () => {
+    if (!incomeRecordID) return;
+    const res = await request('GET', `/records/${incomeRecordID}/history`, {
+      token: admin.access_token,
+      expectedStatus: 200,
+    });
+    assert(Array.isArray(res.data?.data), 'history data not array');
+    if (res.data.data.length > 0) {
+      const entry = res.data.data[0];
+      assert(entry.action,     'Audit entry missing action');
+      assert(entry.actor_id,   'Audit entry missing actor_id');
+      assert(entry.created_at, 'Audit entry missing created_at');
+    }
+  });
+
+  await runTest('GET /records/:id/history → 403 for viewer', async () => {
+    if (!incomeRecordID) return;
+    await request('GET', `/records/${incomeRecordID}/history`, {
+      token: viewer.access_token,
+      expectedStatus: 403,
+    });
+  });
+
+  await runTest('GET /records/:id/history → 403 for analyst', async () => {
+    if (!incomeRecordID) return;
+    await request('GET', `/records/${incomeRecordID}/history`, {
+      token: analyst.access_token,
+      expectedStatus: 403,
+    });
+  });
+
   // ═══════════════════════════════════════════════════════════════════════
   // SECTION 7 — DASHBOARD
   // ═══════════════════════════════════════════════════════════════════════

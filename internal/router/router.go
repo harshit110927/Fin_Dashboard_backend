@@ -1,16 +1,19 @@
+// Package router registers all API routes with their middleware chains.
 package router
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/jmoiron/sqlx"
 
 	"finance-dashboard/internal/handler"
 	"finance-dashboard/internal/middleware"
 )
 
-func SetupRouter(authH *handler.AuthHandler, userH *handler.UserHandler, recH *handler.RecordHandler, dashH *handler.DashboardHandler, categoryH *handler.CategoryHandler) *gin.Engine {
+func SetupRouter(db *sqlx.DB, authH *handler.AuthHandler, userH *handler.UserHandler, recH *handler.RecordHandler, dashH *handler.DashboardHandler, categoryH *handler.CategoryHandler) *gin.Engine {
 	r := gin.New()
-	r.Use(middleware.RequestLogger())
-	//r.Use(middleware.RateLimiter())
+	r.Use(middleware.RequestID(), middleware.RequestLogger(), middleware.RateLimiter())
+
+	r.GET("/health", handler.HealthCheck(db))
 
 	v1 := r.Group("/api/v1")
 
@@ -44,6 +47,7 @@ func SetupRouter(authH *handler.AuthHandler, userH *handler.UserHandler, recH *h
 		records.PATCH("/:id", middleware.RoleGuard("admin"), recH.Update)
 		records.DELETE("/:id", middleware.RoleGuard("admin"), recH.Delete)
 		records.POST("/:id/void", middleware.RoleGuard("admin"), recH.Void)
+		records.GET("/:id/history", middleware.RoleGuard("admin"), recH.History)
 	}
 
 	// Dashboard routes

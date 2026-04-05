@@ -175,6 +175,9 @@ All responses follow this envelope:
 
 ### Auth
 
+| GET  | `/health`                          | None    | Liveness probe with DB status |
+| GET  | `/api/v1/records/:id/history`      | `admin` | Full audit trail for a record |
+
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
 | POST | `/api/v1/auth/register` | Public | Register (defaults to viewer role) |
@@ -375,6 +378,18 @@ Refresh tokens are stored as `SHA-256(token)` in the database — never the raw 
 
 Supabase free tier allows a maximum of 10 concurrent connections. The pool is set to `MaxOpenConns=10, MaxIdleConns=3, ConnMaxLifetime=5min` to respect this limit and avoid connection exhaustion under concurrent requests.
 
+### 7. Migration Strategy
+
+Migrations use ordered raw SQL files executed via `psql` for maximum
+portability and zero additional tooling dependencies. Each file is
+idempotent (`IF NOT EXISTS`, `ON CONFLICT DO NOTHING`).
+
+**Tradeoff acknowledged:** In a production system this would use
+[goose](https://github.com/pressly/goose) or
+[golang-migrate](https://github.com/golang-migrate/migrate) for versioned
+rollback support and migration state tracking in the DB. That tooling was
+intentionally excluded here to keep the setup path simple and dependency-free.
+
 ---
 
 ## Running Tests
@@ -422,7 +437,12 @@ finance-dashboard/
 │   ├── db/
 │   │   ├── postgres.go         ← Connection pool setup
 │   │   └── migrations/         ← 7 ordered idempotent SQL files
-│   ├── middleware/             ← Auth, RoleGuard, Logger, RateLimiter
+│   ├── middleware/
+│   │   ├── auth.go           ← JWT validation, sets user_id + role in context
+│   │   ├── role_guard.go     ← Role enforcement, returns 403 INSUFFICIENT_PERMISSIONS
+│   │   ├── request_id.go     ← Injects X-Request-ID for request correlation
+│   │   ├── request_logger.go ← Logs method, path, status, latency, IP, request_id
+│   │   └── rate_limiter.go   ← 100 req/min per IP, in-memory
 │   ├── domain/                 ← Pure Go structs, no DB tags
 │   ├── handler/                ← HTTP layer only, zero business logic
 │   ├── service/                ← All business decisions live here

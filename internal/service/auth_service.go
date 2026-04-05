@@ -1,24 +1,25 @@
+// Package service implements all business logic for the finance dashboard.
 package service
 
 import (
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"time"
 
 	"finance-dashboard/internal/config"
 	"finance-dashboard/internal/domain"
 	"finance-dashboard/internal/repository"
+	"finance-dashboard/pkg/apperr"
 	jwtpkg "finance-dashboard/pkg/jwt"
 	"finance-dashboard/pkg/password"
 )
 
 type AuthService struct {
-	userRepo  *repository.UserRepository
-	tokenRepo *repository.TokenRepository
+	userRepo  repository.UserRepo
+	tokenRepo repository.TokenRepo
 }
 
-func NewAuthService(userRepo *repository.UserRepository, tokenRepo *repository.TokenRepository) *AuthService {
+func NewAuthService(userRepo repository.UserRepo, tokenRepo repository.TokenRepo) *AuthService {
 	return &AuthService{userRepo: userRepo, tokenRepo: tokenRepo}
 }
 
@@ -34,7 +35,7 @@ func (s *AuthService) Register(req *domain.CreateUserRequest) (*domain.UserRespo
 		return nil, err
 	}
 	if existing != nil {
-		return nil, errors.New("email already in use")
+		return nil, apperr.ErrDuplicateEmail
 	}
 
 	hash, err := password.Hash(req.Password)
@@ -51,10 +52,10 @@ func (s *AuthService) Login(email, pass string) (*TokenPair, error) {
 		return nil, err
 	}
 	if user == nil || !password.Verify(pass, user.PasswordHash) {
-		return nil, errors.New("invalid credentials")
+		return nil, apperr.ErrInvalidCredentials
 	}
 	if !user.IsActive {
-		return nil, errors.New("account is disabled")
+		return nil, apperr.ErrAccountInactive
 	}
 
 	accessToken, err := jwtpkg.GenerateAccessToken(user.ID, user.RoleName, config.C.JWTSecret, config.C.JWTAccessExpiry)
@@ -90,7 +91,7 @@ func (s *AuthService) Refresh(refreshToken string) (string, error) {
 		return "", err
 	}
 	if t == nil || t.Revoked || time.Now().After(t.ExpiresAt) {
-		return "", errors.New("invalid or expired refresh token")
+		return "", apperr.ErrUnauthorized
 	}
 
 	claims, err := jwtpkg.ValidateToken(refreshToken, config.C.JWTSecret)
@@ -100,7 +101,7 @@ func (s *AuthService) Refresh(refreshToken string) (string, error) {
 
 	user, err := s.userRepo.FindByID(claims.UserID)
 	if err != nil || user == nil {
-		return "", errors.New("user not found")
+		return "", apperr.ErrNotFound
 	}
 
 	// FIX: was user.Role (int/wrong field), now user.RoleName (string) — critical for

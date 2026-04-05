@@ -1,3 +1,4 @@
+// Package config loads and validates environment variables at startup.
 package config
 
 import (
@@ -25,17 +26,17 @@ func Load() error {
 	ae, _ := time.ParseDuration(getEnv("JWT_ACCESS_EXPIRY", "15m"))
 	re, _ := time.ParseDuration(getEnv("JWT_REFRESH_EXPIRY", "168h"))
 	C = Config{
-		DBHost:          os.Getenv("DB_HOST"),
-		DBPort:          getEnv("DB_PORT", "5432"),
-		DBUser:          os.Getenv("DB_USER"),
-		DBPassword:      os.Getenv("DB_PASSWORD"),
-		DBName:          os.Getenv("DB_NAME"),
-		DBSSLMode:       getEnv("DB_SSLMODE", "disable"),
-		JWTSecret:       os.Getenv("JWT_SECRET"),
-		JWTAccessExpiry: ae,
+		DBHost:           os.Getenv("DB_HOST"),
+		DBPort:           getEnv("DB_PORT", "5432"),
+		DBUser:           os.Getenv("DB_USER"),
+		DBPassword:       os.Getenv("DB_PASSWORD"),
+		DBName:           os.Getenv("DB_NAME"),
+		DBSSLMode:        getEnv("DB_SSLMODE", "disable"),
+		JWTSecret:        os.Getenv("JWT_SECRET"),
+		JWTAccessExpiry:  ae,
 		JWTRefreshExpiry: re,
-		ServerPort:      getEnv("SERVER_PORT", "8080"),
-		AppEnv:          getEnv("APP_ENV", "development"),
+		ServerPort:       getEnv("SERVER_PORT", "8080"),
+		AppEnv:           getEnv("APP_ENV", "development"),
 	}
 	return nil
 }
