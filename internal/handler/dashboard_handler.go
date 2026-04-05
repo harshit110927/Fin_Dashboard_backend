@@ -3,7 +3,6 @@ package handler
 import (
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -26,7 +25,7 @@ func (h *DashboardHandler) Summary(c *gin.Context) {
 
 	summary, err := h.dashSvc.GetSummary(from, to)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		handleError(c, err)
 		return
 	}
 	response.Success(c, http.StatusOK, summary)
@@ -35,7 +34,7 @@ func (h *DashboardHandler) Summary(c *gin.Context) {
 func (h *DashboardHandler) Trends(c *gin.Context) {
 	trends, err := h.dashSvc.GetTrends()
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		handleError(c, err)
 		return
 	}
 	response.Success(c, http.StatusOK, trends)
@@ -44,7 +43,7 @@ func (h *DashboardHandler) Trends(c *gin.Context) {
 func (h *DashboardHandler) Categories(c *gin.Context) {
 	breakdown, err := h.dashSvc.GetCategoryBreakdown()
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		handleError(c, err)
 		return
 	}
 	response.Success(c, http.StatusOK, breakdown)
@@ -61,7 +60,7 @@ func (h *DashboardHandler) Recent(c *gin.Context) {
 
 	records, err := h.dashSvc.GetRecentActivity(limit)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		handleError(c, err)
 		return
 	}
 	response.Success(c, http.StatusOK, records)
@@ -70,7 +69,7 @@ func (h *DashboardHandler) Recent(c *gin.Context) {
 func (h *DashboardHandler) ListCategories(c *gin.Context) {
 	cats, err := h.dashSvc.GetCategories()
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		handleError(c, err)
 		return
 	}
 	response.Success(c, http.StatusOK, cats)
@@ -90,12 +89,7 @@ func (h *DashboardHandler) CreateCategory(c *gin.Context) {
 
 	cat, err := h.dashSvc.CreateCategory(&req)
 	if err != nil {
-		// FIX: catch duplicate name error and return 409 instead of 500 (test 9)
-		if strings.HasPrefix(err.Error(), "DUPLICATE:") {
-			response.Error(c, http.StatusConflict, "CONFLICT", strings.TrimPrefix(err.Error(), "DUPLICATE:"))
-			return
-		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		handleError(c, err)
 		return
 	}
 	response.Success(c, http.StatusCreated, cat)

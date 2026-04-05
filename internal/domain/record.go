@@ -26,11 +26,9 @@ type CreateRecordRequest struct {
 }
 
 type UpdateRecordRequest struct {
-	Amount      *float64 `json:"amount"`
-	CategoryID  *int     `json:"category_id"`
-	Date        *string  `json:"date"`
-	Description *string  `json:"description"`
-	Type        *string  `json:"type"`
+	CategoryID  *int    `json:"category_id"`
+	Date        *string `json:"date"`
+	Description *string `json:"description"`
 }
 
 type VoidRecordRequest struct {

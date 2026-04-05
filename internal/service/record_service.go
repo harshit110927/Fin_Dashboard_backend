@@ -2,28 +2,22 @@ package service
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"strings"
 
 	"github.com/google/uuid"
 
 	"finance-dashboard/internal/domain"
 	"finance-dashboard/internal/repository"
+	"finance-dashboard/pkg/apperr"
 )
 
 type RecordService struct {
-	repo      *repository.RecordRepository
-	auditRepo *repository.AuditRepository
+	repo      repository.RecordRepo
+	auditRepo repository.AuditRepo
 }
 
-func NewRecordService(repo *repository.RecordRepository, auditRepo *repository.AuditRepository) *RecordService {
+func NewRecordService(repo repository.RecordRepo, auditRepo repository.AuditRepo) *RecordService {
 	return &RecordService{repo: repo, auditRepo: auditRepo}
 }
-
-var ErrAmountImmutable = errors.New("amount cannot be modified after a record is created")
-var ErrTypeImmutable = errors.New("type cannot be modified after a record is created")
-var ErrAlreadyVoided = errors.New("record is already voided")
 
 func (s *RecordService) Create(req *domain.CreateRecordRequest, actorID, ip string) (*domain.FinancialRecord, error) {
 	rec := &domain.FinancialRecord{
@@ -37,10 +31,6 @@ func (s *RecordService) Create(req *domain.CreateRecordRequest, actorID, ip stri
 	}
 	created, err := s.repo.Create(rec)
 	if err != nil {
-		// FIX: catch FK violation so handler can return 400 instead of 500 (test 10)
-		if strings.Contains(err.Error(), "foreign key constraint") {
-			return nil, fmt.Errorf("INVALID_FK:category_id %d does not exist", req.CategoryID)
-		}
 		return nil, err
 	}
 	_ = s.auditRepo.Log(context.Background(), "financial_record", created.ID, "CREATE", actorID, ip, nil, created)
@@ -52,16 +42,19 @@ func (s *RecordService) GetByID(id string) (*domain.FinancialRecord, error) {
 }
 
 func (s *RecordService) List(filter domain.RecordFilter) ([]domain.FinancialRecord, int, error) {
+	if filter.DateFrom != "" && filter.DateTo != "" && filter.DateFrom > filter.DateTo {
+		return nil, 0, apperr.ErrInvalidDateRange
+	}
+	if filter.PerPage <= 0 || filter.PerPage > 100 {
+		filter.PerPage = 20
+	}
+	if filter.Page <= 0 {
+		filter.Page = 1
+	}
 	return s.repo.List(filter)
 }
 
 func (s *RecordService) Update(id string, req *domain.UpdateRecordRequest, actorID, ip string) (*domain.FinancialRecord, error) {
-	if req.Amount != nil {
-		return nil, ErrAmountImmutable
-	}
-	if req.Type != nil {
-		return nil, ErrTypeImmutable
-	}
 
 	old, err := s.repo.FindByID(id)
 	if err != nil {
@@ -105,10 +98,10 @@ func (s *RecordService) Void(id, reason, actorID, ip string) (*domain.FinancialR
 		return nil, err
 	}
 	if rec == nil {
-		return nil, errors.New("record not found")
+		return nil, apperr.ErrNotFound
 	}
 	if rec.Status == "void" {
-		return nil, ErrAlreadyVoided
+		return nil, apperr.ErrAlreadyVoided
 	}
 
 	if err := s.repo.Void(id); err != nil {

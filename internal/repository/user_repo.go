@@ -8,6 +8,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"finance-dashboard/internal/domain"
+	"finance-dashboard/pkg/dberr"
 )
 
 type UserRepository struct {
@@ -41,9 +42,9 @@ func (r *UserRepository) Create(name, email, passwordHash string, roleID int) (*
 		name, email, passwordHash, roleID,
 	).Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.IsActive, &u.CreatedAt)
 	if err != nil {
-		return nil, err
+		return nil, dberr.Translate(err)
 	}
-	return &u, nil
+	return &u, dberr.Translate(nil)
 }
 
 func (r *UserRepository) FindByEmail(email string) (*domain.User, error) {
@@ -58,11 +59,11 @@ func (r *UserRepository) FindByEmail(email string) (*domain.User, error) {
 	).StructScan(&u)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return nil, dberr.Translate(nil)
 		}
-		return nil, err
+		return nil, dberr.Translate(err)
 	}
-	return &u, nil
+	return &u, dberr.Translate(nil)
 }
 
 func (r *UserRepository) FindByID(id string) (*domain.UserResponse, error) {
@@ -76,18 +77,18 @@ func (r *UserRepository) FindByID(id string) (*domain.UserResponse, error) {
 	).Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.IsActive, &u.CreatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return nil, dberr.Translate(nil)
 		}
-		return nil, err
+		return nil, dberr.Translate(err)
 	}
-	return &u, nil
+	return &u, dberr.Translate(nil)
 }
 
 func (r *UserRepository) List(page, perPage int) ([]domain.UserResponse, int, error) {
 	var total int
 	err := r.db.QueryRow(`SELECT COUNT(*) FROM users WHERE deleted_at IS NULL`).Scan(&total)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, dberr.Translate(err)
 	}
 
 	offset := (page - 1) * perPage
@@ -101,7 +102,7 @@ func (r *UserRepository) List(page, perPage int) ([]domain.UserResponse, int, er
 		perPage, offset,
 	)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, dberr.Translate(err)
 	}
 	defer rows.Close()
 
@@ -109,14 +110,14 @@ func (r *UserRepository) List(page, perPage int) ([]domain.UserResponse, int, er
 	for rows.Next() {
 		var u domain.UserResponse
 		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.IsActive, &u.CreatedAt); err != nil {
-			return nil, 0, err
+			return nil, 0, dberr.Translate(err)
 		}
 		users = append(users, u)
 	}
 	if users == nil {
 		users = []domain.UserResponse{}
 	}
-	return users, total, nil
+	return users, total, dberr.Translate(nil)
 }
 
 func (r *UserRepository) UpdateRole(id string, roleID int) error {
@@ -124,7 +125,7 @@ func (r *UserRepository) UpdateRole(id string, roleID int) error {
 		UPDATE users SET role_id = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL`,
 		roleID, id,
 	)
-	return err
+	return dberr.Translate(err)
 }
 
 func (r *UserRepository) UpdateStatus(id string, isActive bool) error {
@@ -132,7 +133,7 @@ func (r *UserRepository) UpdateStatus(id string, isActive bool) error {
 		UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL`,
 		isActive, id,
 	)
-	return err
+	return dberr.Translate(err)
 }
 
 func (r *UserRepository) Update(id string, name, email *string) error {
@@ -155,7 +156,7 @@ func (r *UserRepository) Update(id string, name, email *string) error {
 	query += fmt.Sprintf(" WHERE id = $%d AND deleted_at IS NULL", idx)
 	args = append(args, id)
 	_, err := r.db.Exec(query, args...)
-	return err
+	return dberr.Translate(err)
 }
 
 func (r *UserRepository) SoftDelete(id string) error {
@@ -163,5 +164,5 @@ func (r *UserRepository) SoftDelete(id string) error {
 		UPDATE users SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`,
 		id,
 	)
-	return err
+	return dberr.Translate(err)
 }
