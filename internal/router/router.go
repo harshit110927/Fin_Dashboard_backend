@@ -9,9 +9,9 @@ import (
 	"finance-dashboard/internal/middleware"
 )
 
-func SetupRouter(db *sqlx.DB, authH *handler.AuthHandler, userH *handler.UserHandler, recH *handler.RecordHandler, dashH *handler.DashboardHandler, categoryH *handler.CategoryHandler) *gin.Engine {
+func SetupRouter(db *sqlx.DB, rpm int, authH *handler.AuthHandler, userH *handler.UserHandler, recH *handler.RecordHandler, dashH *handler.DashboardHandler, categoryH *handler.CategoryHandler) *gin.Engine {
 	r := gin.New()
-	r.Use(middleware.RequestID(), middleware.RequestLogger(), middleware.RateLimiter())
+	r.Use(middleware.RequestID(), middleware.RequestLogger(), middleware.RateLimiter(rpm))
 
 	r.GET("/health", handler.HealthCheck(db))
 
@@ -42,6 +42,7 @@ func SetupRouter(db *sqlx.DB, authH *handler.AuthHandler, userH *handler.UserHan
 	records := v1.Group("/records", middleware.AuthRequired())
 	{
 		records.GET("/", middleware.RoleGuard("viewer", "analyst", "admin"), recH.List)
+		records.GET("/:id/history", middleware.RoleGuard("admin"), recH.History)
 		records.GET("/:id", middleware.RoleGuard("viewer", "analyst", "admin"), recH.GetByID)
 		records.POST("/", middleware.RoleGuard("admin"), recH.Create)
 		records.PATCH("/:id", middleware.RoleGuard("admin"), recH.Update)

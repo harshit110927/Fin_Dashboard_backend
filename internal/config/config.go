@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -14,6 +15,7 @@ type Config struct {
 	JWTSecret                                             string
 	JWTAccessExpiry, JWTRefreshExpiry                     time.Duration
 	ServerPort, AppEnv                                    string
+	RateLimitRPM                                          int
 }
 
 var C Config
@@ -25,6 +27,11 @@ func Load() error {
 	}
 	ae, _ := time.ParseDuration(getEnv("JWT_ACCESS_EXPIRY", "15m"))
 	re, _ := time.ParseDuration(getEnv("JWT_REFRESH_EXPIRY", "168h"))
+	rpmStr := getEnv("RATE_LIMIT_RPM", "100")
+	rpm, err := strconv.Atoi(rpmStr)
+	if err != nil || rpm <= 0 {
+		rpm = 100
+	}
 	C = Config{
 		DBHost:           os.Getenv("DB_HOST"),
 		DBPort:           getEnv("DB_PORT", "5432"),
@@ -37,6 +44,7 @@ func Load() error {
 		JWTRefreshExpiry: re,
 		ServerPort:       getEnv("SERVER_PORT", "8080"),
 		AppEnv:           getEnv("APP_ENV", "development"),
+		RateLimitRPM:     rpm,
 	}
 	return nil
 }

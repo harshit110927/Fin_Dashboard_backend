@@ -49,7 +49,7 @@ func main() {
 	categoryH := handler.NewCategoryHandler(dashSvc)
 
 	// 6. Start server
-	r := router.SetupRouter(database, authH, userH, recH, dashH, categoryH)
+	r := router.SetupRouter(database, config.C.RateLimitRPM, authH, userH, recH, dashH, categoryH)
 	server := &http.Server{Addr: ":" + config.C.ServerPort, Handler: r}
 
 	go func() {
