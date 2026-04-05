@@ -1,16 +1,19 @@
+// Package router registers all API routes with their middleware chains.
 package router
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/jmoiron/sqlx"
 
 	"finance-dashboard/internal/handler"
 	"finance-dashboard/internal/middleware"
 )
 
-func SetupRouter(authH *handler.AuthHandler, userH *handler.UserHandler, recH *handler.RecordHandler, dashH *handler.DashboardHandler, categoryH *handler.CategoryHandler) *gin.Engine {
+func SetupRouter(db *sqlx.DB, rpm int, authH *handler.AuthHandler, userH *handler.UserHandler, recH *handler.RecordHandler, dashH *handler.DashboardHandler, categoryH *handler.CategoryHandler) *gin.Engine {
 	r := gin.New()
-	r.Use(middleware.RequestLogger())
-	//r.Use(middleware.RateLimiter())
+	r.Use(middleware.RequestID(), middleware.RequestLogger(), middleware.RateLimiter(rpm))
+
+	r.GET("/health", handler.HealthCheck(db))
 
 	v1 := r.Group("/api/v1")
 
@@ -39,6 +42,7 @@ func SetupRouter(authH *handler.AuthHandler, userH *handler.UserHandler, recH *h
 	records := v1.Group("/records", middleware.AuthRequired())
 	{
 		records.GET("/", middleware.RoleGuard("viewer", "analyst", "admin"), recH.List)
+		records.GET("/:id/history", middleware.RoleGuard("admin"), recH.History)
 		records.GET("/:id", middleware.RoleGuard("viewer", "analyst", "admin"), recH.GetByID)
 		records.POST("/", middleware.RoleGuard("admin"), recH.Create)
 		records.PATCH("/:id", middleware.RoleGuard("admin"), recH.Update)

@@ -1,7 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"finance-dashboard/internal/config"
 	"finance-dashboard/internal/db"
@@ -38,14 +44,32 @@ func main() {
 	// 5. Handlers
 	authH := handler.NewAuthHandler(authSvc)
 	userH := handler.NewUserHandler(userRepo, auditRepo)
-	recH := handler.NewRecordHandler(recordSvc)
+	recH := handler.NewRecordHandler(recordSvc, auditRepo)
 	dashH := handler.NewDashboardHandler(dashSvc)
 	categoryH := handler.NewCategoryHandler(dashSvc)
 
 	// 6. Start server
-	r := router.SetupRouter(authH, userH, recH, dashH, categoryH)
-	log.Printf("server starting on :%s", config.C.ServerPort)
-	if err := r.Run(":" + config.C.ServerPort); err != nil {
-		log.Fatalf("server error: %v", err)
+	r := router.SetupRouter(database, config.C.RateLimitRPM, authH, userH, recH, dashH, categoryH)
+	server := &http.Server{Addr: ":" + config.C.ServerPort, Handler: r}
+
+	go func() {
+		log.Printf("server starting on :%s", config.C.ServerPort)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	// Graceful shutdown ensures in-flight requests complete before the process
+	// exits. In financial systems this is critical — a mid-flight record create
+	// followed by an audit log write must not be interrupted mid-transaction.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Fatalf("server shutdown error: %v", err)
 	}
 }

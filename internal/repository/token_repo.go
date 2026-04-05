@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+
+	"finance-dashboard/pkg/dberr"
 )
 
 type RefreshToken struct {
@@ -31,7 +33,7 @@ func (r *TokenRepository) Store(userID, tokenHash string, expiresAt time.Time) e
 		VALUES ($1, $2, $3)`,
 		userID, tokenHash, expiresAt,
 	)
-	return err
+	return dberr.Translate(err)
 }
 
 func (r *TokenRepository) FindByHash(hash string) (*RefreshToken, error) {
@@ -43,19 +45,19 @@ func (r *TokenRepository) FindByHash(hash string) (*RefreshToken, error) {
 	).StructScan(&t)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return nil, dberr.Translate(nil)
 		}
-		return nil, err
+		return nil, dberr.Translate(err)
 	}
-	return &t, nil
+	return &t, dberr.Translate(nil)
 }
 
 func (r *TokenRepository) Revoke(hash string) error {
 	_, err := r.db.Exec(`UPDATE refresh_tokens SET revoked = true WHERE token_hash = $1`, hash)
-	return err
+	return dberr.Translate(err)
 }
 
 func (r *TokenRepository) CleanExpired() error {
 	_, err := r.db.Exec(`DELETE FROM refresh_tokens WHERE expires_at < NOW() OR revoked = true`)
-	return err
+	return dberr.Translate(err)
 }

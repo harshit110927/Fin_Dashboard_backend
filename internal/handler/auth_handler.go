@@ -1,3 +1,4 @@
+// Package handler contains Gin HTTP handlers that parse requests, call services, and write responses.
 package handler
 
 import (
@@ -34,8 +35,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 	user, err := h.authSvc.Register(&req)
 	if err != nil {
-		// FIX: duplicate email returns 400 not 409 (test 1)
-		response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		handleError(c, err)
 		return
 	}
 	response.Success(c, http.StatusCreated, user)
@@ -57,7 +57,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 	pair, err := h.authSvc.Login(req.Email, req.Password)
 	if err != nil {
-		response.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", err.Error())
+		handleError(c, err)
 		return
 	}
 	response.Success(c, http.StatusOK, pair)
@@ -73,7 +73,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 	}
 	accessToken, err := h.authSvc.Refresh(req.RefreshToken)
 	if err != nil {
-		response.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", err.Error())
+		handleError(c, err)
 		return
 	}
 	response.Success(c, http.StatusOK, gin.H{"access_token": accessToken})
@@ -88,7 +88,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		return
 	}
 	if err := h.authSvc.Logout(req.RefreshToken); err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		handleError(c, err)
 		return
 	}
 	response.Success(c, http.StatusOK, gin.H{"message": "logged out"})

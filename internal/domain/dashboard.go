@@ -1,3 +1,4 @@
+// Package domain contains pure Go structs representing business entities.
 package domain
 
 type DashboardSummary struct {

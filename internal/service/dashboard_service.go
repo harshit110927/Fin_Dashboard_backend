@@ -1,19 +1,18 @@
 package service
 
 import (
-	"fmt"
-	"strings"
 	"time"
 
 	"finance-dashboard/internal/domain"
 	"finance-dashboard/internal/repository"
+	"finance-dashboard/pkg/apperr"
 )
 
 type DashboardService struct {
-	repo *repository.DashboardRepository
+	repo repository.DashboardRepo
 }
 
-func NewDashboardService(repo *repository.DashboardRepository) *DashboardService {
+func NewDashboardService(repo repository.DashboardRepo) *DashboardService {
 	return &DashboardService{repo: repo}
 }
 
@@ -34,6 +33,9 @@ func (s *DashboardService) GetSummary(from, to string) (*domain.DashboardSummary
 		TotalExpenses: expense,
 		NetBalance:    income - expense,
 	}
+	// net_balance is derived in the service layer, not the DB, so it is
+	// always exactly income - expenses with no floating point accumulation.
+	summary.NetBalance = summary.TotalIncome - summary.TotalExpenses
 	summary.Period.From = from
 	summary.Period.To = to
 	return summary, nil
@@ -69,7 +71,7 @@ func (s *DashboardService) GetRecentActivity(limit int) ([]domain.FinancialRecor
 		limit = 1
 	}
 	if limit > 50 {
-		limit = 50
+		return nil, apperr.ErrLimitExceeded
 	}
 	return s.repo.GetRecentActivity(limit)
 }
@@ -79,15 +81,7 @@ func (s *DashboardService) GetCategories() ([]domain.Category, error) {
 }
 
 func (s *DashboardService) CreateCategory(req *domain.CreateCategoryRequest) (*domain.Category, error) {
-	cat, err := s.repo.CreateCategory(req.Name, req.Type)
-	if err != nil {
-		// FIX: wrap postgres duplicate key error so handler can return 409 instead of 500 (test 9)
-		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
-			return nil, fmt.Errorf("DUPLICATE:category name already exists")
-		}
-		return nil, err
-	}
-	return cat, nil
+	return s.repo.CreateCategory(req.Name, req.Type)
 }
 
 func (s *DashboardService) UpdateCategory(id int, req *domain.UpdateCategoryRequest) (*domain.Category, error) {
