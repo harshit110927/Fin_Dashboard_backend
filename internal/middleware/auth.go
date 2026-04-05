@@ -16,15 +16,21 @@ func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
-			response.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "missing or invalid authorization header")
+			response.Error(c, http.StatusUnauthorized,
+				"UNAUTHORIZED", "missing or invalid authorization header")
+			c.Abort() // ← stops the chain, no further middleware runs
 			return
 		}
+
 		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 		claims, err := jwtpkg.ValidateToken(tokenStr, config.C.JWTSecret)
 		if err != nil {
-			response.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "invalid or expired token")
+			response.Error(c, http.StatusUnauthorized,
+				"UNAUTHORIZED", "invalid or expired token")
+			c.Abort() // ← stops the chain
 			return
 		}
+
 		c.Set("user_id", claims.UserID)
 		c.Set("role", claims.Role)
 		c.Next()

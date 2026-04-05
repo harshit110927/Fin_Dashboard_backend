@@ -44,7 +44,7 @@ func (r *AuditRepository) Log(ctx context.Context, entityType, entityID, action,
 
 // GetByEntity returns all audit log entries for a specific entity ordered most recent first.
 func (r *AuditRepository) GetByEntity(ctx context.Context, entityType, entityID string) ([]AuditEntry, error) {
-	var entries []AuditEntry
+	entries := make([]AuditEntry, 0)
 	err := r.db.SelectContext(ctx, &entries,
 		`SELECT id, action, actor_id, old_data, new_data,
 		        COALESCE(ip_address::text, '') AS ip_address, created_at

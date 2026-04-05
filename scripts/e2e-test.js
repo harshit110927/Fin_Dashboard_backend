@@ -295,6 +295,32 @@ async function run() {
     assert(viewer.user.role === 'viewer', `Expected role=viewer, got ${viewer.user.role}`);
   });
 
+  await runTest('Admin JWT token contains correct role=admin claim', async () => {
+  const payload = JSON.parse(
+    Buffer.from(admin.access_token.split('.')[1], 'base64').toString()
+  );
+  assert(payload.role === 'admin',
+    `JWT role claim is "${payload.role}", expected "admin". ` +
+    `Response body and JWT token are out of sync — ` +
+    `check FindByEmail JOIN and GenerateAccessToken field name.`);
+});
+
+await runTest('Analyst JWT token contains correct role=analyst claim', async () => {
+  const payload = JSON.parse(
+    Buffer.from(analyst.access_token.split('.')[1], 'base64').toString()
+  );
+  assert(payload.role === 'analyst',
+    `JWT role claim is "${payload.role}", expected "analyst".`);
+});
+
+await runTest('Viewer JWT token contains correct role=viewer claim', async () => {
+  const payload = JSON.parse(
+    Buffer.from(viewer.access_token.split('.')[1], 'base64').toString()
+  );
+  assert(payload.role === 'viewer',
+    `JWT role claim is "${payload.role}", expected "viewer".`);
+});
+
   // ─── Refresh token ───────────────────────────────────────────────────
   beginStep('1 · Auth — Refresh token');
 
