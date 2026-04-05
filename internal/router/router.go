@@ -48,7 +48,7 @@ func SetupRouter(db *sqlx.DB, rpm int, authH *handler.AuthHandler, userH *handle
 		records.PATCH("/:id", middleware.RoleGuard("admin"), recH.Update)
 		records.DELETE("/:id", middleware.RoleGuard("admin"), recH.Delete)
 		records.POST("/:id/void", middleware.RoleGuard("admin"), recH.Void)
-		records.GET("/:id/history", middleware.RoleGuard("admin"), recH.History)
+		//records.GET("/:id/history", middleware.RoleGuard("admin"), recH.History)
 	}
 
 	// Dashboard routes
