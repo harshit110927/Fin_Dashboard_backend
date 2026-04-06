@@ -3,7 +3,6 @@ package handler
 import (
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -23,7 +22,7 @@ func NewCategoryHandler(dashSvc *service.DashboardService) *CategoryHandler {
 func (h *CategoryHandler) List(c *gin.Context) {
 	cats, err := h.dashSvc.GetCategories()
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		handleError(c, err)
 		return
 	}
 	response.Success(c, http.StatusOK, cats)
@@ -43,12 +42,7 @@ func (h *CategoryHandler) Create(c *gin.Context) {
 
 	cat, err := h.dashSvc.CreateCategory(&req)
 	if err != nil {
-		// FIX: catch duplicate name error → 409 instead of 500 (test 9)
-		if strings.HasPrefix(err.Error(), "DUPLICATE:") {
-			response.Error(c, http.StatusConflict, "CONFLICT", strings.TrimPrefix(err.Error(), "DUPLICATE:"))
-			return
-		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		handleError(c, err)
 		return
 	}
 	response.Success(c, http.StatusCreated, cat)
@@ -74,7 +68,7 @@ func (h *CategoryHandler) Update(c *gin.Context) {
 
 	updated, err := h.dashSvc.UpdateCategory(id, &req)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		handleError(c, err)
 		return
 	}
 	if updated == nil {

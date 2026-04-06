@@ -1,24 +1,30 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
+	"io"
+	"log"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"finance-dashboard/internal/domain"
+	"finance-dashboard/internal/repository"
 	"finance-dashboard/internal/service"
+	"finance-dashboard/pkg/apperr"
 	"finance-dashboard/pkg/response"
 )
 
 type RecordHandler struct {
 	recordSvc *service.RecordService
+	auditRepo repository.AuditRepo
 }
 
-func NewRecordHandler(recordSvc *service.RecordService) *RecordHandler {
-	return &RecordHandler{recordSvc: recordSvc}
+func NewRecordHandler(recordSvc *service.RecordService, auditRepo repository.AuditRepo) *RecordHandler {
+	return &RecordHandler{recordSvc: recordSvc, auditRepo: auditRepo}
 }
 
 func (h *RecordHandler) List(c *gin.Context) {
@@ -45,7 +51,7 @@ func (h *RecordHandler) List(c *gin.Context) {
 
 	records, total, err := h.recordSvc.List(filter)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		handleError(c, err)
 		return
 	}
 	response.SuccessPaginated(c, http.StatusOK, records, page, perPage, total)
@@ -55,11 +61,11 @@ func (h *RecordHandler) GetByID(c *gin.Context) {
 	id := c.Param("id")
 	rec, err := h.recordSvc.GetByID(id)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		handleError(c, err)
 		return
 	}
 	if rec == nil {
-		response.Error(c, http.StatusNotFound, "NOT_FOUND", "record not found")
+		handleError(c, apperr.ErrNotFound)
 		return
 	}
 	response.Success(c, http.StatusOK, rec)
@@ -82,11 +88,7 @@ func (h *RecordHandler) Create(c *gin.Context) {
 
 	rec, err := h.recordSvc.Create(&req, actorID, ip)
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "INVALID_FK:") {
-			response.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", strings.TrimPrefix(err.Error(), "INVALID_FK:"))
-			return
-		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		handleError(c, err)
 		return
 	}
 	response.Success(c, http.StatusCreated, rec)
@@ -94,10 +96,30 @@ func (h *RecordHandler) Create(c *gin.Context) {
 
 func (h *RecordHandler) Update(c *gin.Context) {
 	id := c.Param("id")
-	var req domain.UpdateRecordRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
 		response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
 		return
+	}
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
+
+	var req domain.UpdateRecordRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		return
+	}
+	for _, forbidden := range []string{"amount", "type"} {
+		if _, ok := raw[forbidden]; ok {
+			response.Error(c, http.StatusBadRequest, apperr.ErrImmutableField.Code, apperr.ErrImmutableField.Message)
+			return
+		}
 	}
 
 	actorID := c.MustGet("user_id").(string)
@@ -105,16 +127,11 @@ func (h *RecordHandler) Update(c *gin.Context) {
 
 	rec, err := h.recordSvc.Update(id, &req, actorID, ip)
 	if err != nil {
-		// FIX: also catch ErrTypeImmutable alongside ErrAmountImmutable
-		if errors.Is(err, service.ErrAmountImmutable) || errors.Is(err, service.ErrTypeImmutable) {
-			response.Error(c, http.StatusBadRequest, "IMMUTABLE_FIELD", err.Error())
-			return
-		}
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		handleError(c, err)
 		return
 	}
 	if rec == nil {
-		response.Error(c, http.StatusNotFound, "NOT_FOUND", "record not found")
+		handleError(c, apperr.ErrNotFound)
 		return
 	}
 	response.Success(c, http.StatusOK, rec)
@@ -126,7 +143,7 @@ func (h *RecordHandler) Delete(c *gin.Context) {
 	ip := c.ClientIP()
 
 	if err := h.recordSvc.Delete(id, actorID, ip); err != nil {
-		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		handleError(c, err)
 		return
 	}
 	response.Success(c, http.StatusOK, gin.H{"message": "record deleted"})
@@ -151,13 +168,32 @@ func (h *RecordHandler) Void(c *gin.Context) {
 	// FIX: Void now returns the updated record so test can assert status=void
 	rec, err := h.recordSvc.Void(id, req.Reason, actorID, ip)
 	if err != nil {
-		if errors.Is(err, service.ErrAlreadyVoided) {
-			response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
-			return
-		}
-		response.Error(c, http.StatusBadRequest, "BAD_REQUEST", err.Error())
+		handleError(c, err)
 		return
 	}
 	// FIX: return the record (with status=void) instead of a plain message
 	response.Success(c, http.StatusOK, rec)
+}
+
+// History returns the complete audit trail for a single financial record.
+func (h *RecordHandler) History(c *gin.Context) {
+	id := c.Param("id")
+	entries, err := h.auditRepo.GetByEntity(c.Request.Context(), "financial_record", id)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, entries)
+}
+
+// handleError translates a service/repository error into HTTP responses.
+func handleError(c *gin.Context, err error) {
+	var appErr *apperr.AppError
+	if errors.As(err, &appErr) {
+		response.Error(c, appErr.HTTPStatus, appErr.Code, appErr.Message)
+		return
+	}
+	requestID, _ := c.Get("request_id")
+	log.Printf("[ERROR] [%v] unhandled error: %v", requestID, err)
+	response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "An unexpected error occurred")
 }

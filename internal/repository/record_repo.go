@@ -9,6 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"finance-dashboard/internal/domain"
+	"finance-dashboard/pkg/dberr"
 )
 
 type RecordRepository struct {
@@ -37,7 +38,7 @@ func (r *RecordRepository) Create(rec *domain.FinancialRecord) (*domain.Financia
 		rec.ID, rec.Amount, rec.Type, rec.CategoryID, rec.Date, rec.Description, rec.CreatedByID,
 	)
 	if err != nil {
-		return nil, err
+		return nil, dberr.Translate(err)
 	}
 	r.refreshViews()
 	return r.FindByID(rec.ID)
@@ -56,11 +57,11 @@ func (r *RecordRepository) FindByID(id string) (*domain.FinancialRecord, error) 
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return nil, dberr.Translate(nil)
 		}
-		return nil, err
+		return nil, dberr.Translate(err)
 	}
-	return &rec, nil
+	return &rec, dberr.Translate(nil)
 }
 
 func (r *RecordRepository) List(filter domain.RecordFilter) ([]domain.FinancialRecord, int, error) {
@@ -108,7 +109,7 @@ func (r *RecordRepository) List(filter domain.RecordFilter) ([]domain.FinancialR
 	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM vw_record_details %s`, where)
 	var total int
 	if err := r.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
-		return nil, 0, err
+		return nil, 0, dberr.Translate(err)
 	}
 
 	orderBy := "date DESC"
@@ -141,7 +142,7 @@ func (r *RecordRepository) List(filter domain.RecordFilter) ([]domain.FinancialR
 
 	rows, err := r.db.Queryx(query, args...)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, dberr.Translate(err)
 	}
 	defer rows.Close()
 
@@ -153,14 +154,14 @@ func (r *RecordRepository) List(filter domain.RecordFilter) ([]domain.FinancialR
 			&rec.CreatedAt, &rec.UpdatedAt, &rec.CreatedByID, &rec.CategoryName,
 			&rec.CategoryID, &rec.CreatedByName,
 		); err != nil {
-			return nil, 0, err
+			return nil, 0, dberr.Translate(err)
 		}
 		records = append(records, rec)
 	}
 	if records == nil {
 		records = []domain.FinancialRecord{}
 	}
-	return records, total, nil
+	return records, total, dberr.Translate(nil)
 }
 
 func (r *RecordRepository) Update(id string, req *domain.UpdateRecordRequest, updatedBy string) error {
@@ -191,7 +192,7 @@ func (r *RecordRepository) Update(id string, req *domain.UpdateRecordRequest, up
 
 	_, err := r.db.Exec(query, args...)
 	if err != nil {
-		return err
+		return dberr.Translate(err)
 	}
 	r.refreshViews()
 	return nil
@@ -203,7 +204,7 @@ func (r *RecordRepository) SoftDelete(id string) error {
 		id,
 	)
 	if err != nil {
-		return err
+		return dberr.Translate(err)
 	}
 	r.refreshViews()
 	return nil
@@ -215,7 +216,7 @@ func (r *RecordRepository) Void(id string) error {
 		id,
 	)
 	if err != nil {
-		return err
+		return dberr.Translate(err)
 	}
 	r.refreshViews()
 	return nil

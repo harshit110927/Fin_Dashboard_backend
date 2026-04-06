@@ -8,6 +8,7 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"finance-dashboard/internal/domain"
+	"finance-dashboard/pkg/dberr"
 )
 
 type DashboardRepository struct {
@@ -39,7 +40,7 @@ func (r *DashboardRepository) GetSummary(from, to string) (float64, float64, err
 		return 0, 0, err
 	}
 
-	return income, expense, nil
+	return income, expense, dberr.Translate(nil)
 }
 
 func (r *DashboardRepository) GetMonthlyTrends() ([]domain.MonthlyTrend, error) {
@@ -48,7 +49,7 @@ func (r *DashboardRepository) GetMonthlyTrends() ([]domain.MonthlyTrend, error) 
 		FROM mvw_monthly_summary
 		ORDER BY month DESC`)
 	if err != nil {
-		return nil, err
+		return nil, dberr.Translate(err)
 	}
 	defer rows.Close()
 
@@ -59,7 +60,7 @@ func (r *DashboardRepository) GetMonthlyTrends() ([]domain.MonthlyTrend, error) 
 		var month, typ string
 		var total float64
 		if err := rows.Scan(&month, &typ, &total); err != nil {
-			return nil, err
+			return nil, dberr.Translate(err)
 		}
 		if _, ok := trendMap[month]; !ok {
 			trendMap[month] = &domain.MonthlyTrend{Month: month}
@@ -79,7 +80,7 @@ func (r *DashboardRepository) GetMonthlyTrends() ([]domain.MonthlyTrend, error) 
 		t.Net = t.Income - t.Expenses
 		result = append(result, *t)
 	}
-	return result, nil
+	return result, dberr.Translate(nil)
 }
 
 func (r *DashboardRepository) GetCategoryTotals() ([]domain.CategoryTotal, error) {
@@ -88,7 +89,7 @@ func (r *DashboardRepository) GetCategoryTotals() ([]domain.CategoryTotal, error
 		FROM mvw_category_totals
 		ORDER BY type, total DESC`)
 	if err != nil {
-		return nil, err
+		return nil, dberr.Translate(err)
 	}
 	defer rows.Close()
 
@@ -96,11 +97,11 @@ func (r *DashboardRepository) GetCategoryTotals() ([]domain.CategoryTotal, error
 	for rows.Next() {
 		var ct domain.CategoryTotal
 		if err := rows.Scan(&ct.CategoryID, &ct.CategoryName, &ct.Type, &ct.Total, &ct.RecordCount); err != nil {
-			return nil, err
+			return nil, dberr.Translate(err)
 		}
 		result = append(result, ct)
 	}
-	return result, nil
+	return result, dberr.Translate(nil)
 }
 
 func (r *DashboardRepository) GetRecentActivity(limit int) ([]domain.FinancialRecord, error) {
@@ -111,7 +112,7 @@ func (r *DashboardRepository) GetRecentActivity(limit int) ([]domain.FinancialRe
 		ORDER BY created_at DESC
 		LIMIT $1`, limit)
 	if err != nil {
-		return nil, err
+		return nil, dberr.Translate(err)
 	}
 	defer rows.Close()
 
@@ -123,14 +124,14 @@ func (r *DashboardRepository) GetRecentActivity(limit int) ([]domain.FinancialRe
 			&rec.CreatedAt, &rec.UpdatedAt, &rec.CreatedByID, &rec.CategoryName,
 			&rec.CategoryID, &rec.CreatedByName,
 		); err != nil {
-			return nil, err
+			return nil, dberr.Translate(err)
 		}
 		records = append(records, rec)
 	}
 	if records == nil {
 		records = []domain.FinancialRecord{}
 	}
-	return records, nil
+	return records, dberr.Translate(nil)
 }
 
 func (r *DashboardRepository) GetCategories() ([]domain.Category, error) {
@@ -138,7 +139,7 @@ func (r *DashboardRepository) GetCategories() ([]domain.Category, error) {
 		SELECT id, name, type, is_active FROM categories
 		WHERE is_active = true ORDER BY type, name`)
 	if err != nil {
-		return nil, err
+		return nil, dberr.Translate(err)
 	}
 	defer rows.Close()
 
@@ -146,14 +147,14 @@ func (r *DashboardRepository) GetCategories() ([]domain.Category, error) {
 	for rows.Next() {
 		var c domain.Category
 		if err := rows.Scan(&c.ID, &c.Name, &c.Type, &c.IsActive); err != nil {
-			return nil, err
+			return nil, dberr.Translate(err)
 		}
 		cats = append(cats, c)
 	}
 	if cats == nil {
 		cats = []domain.Category{}
 	}
-	return cats, nil
+	return cats, dberr.Translate(nil)
 }
 
 func (r *DashboardRepository) CreateCategory(name, typ string) (*domain.Category, error) {
@@ -165,11 +166,11 @@ func (r *DashboardRepository) CreateCategory(name, typ string) (*domain.Category
 	).Scan(&c.ID, &c.Name, &c.Type, &c.IsActive)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return nil, dberr.Translate(nil)
 		}
-		return nil, err
+		return nil, dberr.Translate(err)
 	}
-	return &c, nil
+	return &c, dberr.Translate(nil)
 }
 
 func (r *DashboardRepository) UpdateCategory(id int, req *domain.UpdateCategoryRequest) (*domain.Category, error) {
@@ -202,11 +203,11 @@ func (r *DashboardRepository) UpdateCategory(id int, req *domain.UpdateCategoryR
 	var c domain.Category
 	if err := r.db.QueryRowx(query, args...).Scan(&c.ID, &c.Name, &c.Type, &c.IsActive); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return nil, dberr.Translate(nil)
 		}
-		return nil, err
+		return nil, dberr.Translate(err)
 	}
-	return &c, nil
+	return &c, dberr.Translate(nil)
 }
 
 func (r *DashboardRepository) FindCategoryByID(id int) (*domain.Category, error) {
@@ -215,9 +216,9 @@ func (r *DashboardRepository) FindCategoryByID(id int) (*domain.Category, error)
 		Scan(&c.ID, &c.Name, &c.Type, &c.IsActive)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return nil, dberr.Translate(nil)
 		}
-		return nil, err
+		return nil, dberr.Translate(err)
 	}
-	return &c, nil
+	return &c, dberr.Translate(nil)
 }

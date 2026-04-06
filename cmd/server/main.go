@@ -1,7 +1,16 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/gin-gonic/gin"
 
 	"finance-dashboard/internal/config"
 	"finance-dashboard/internal/db"
@@ -35,17 +44,37 @@ func main() {
 	recordSvc := service.NewRecordService(recordRepo, auditRepo)
 	dashSvc := service.NewDashboardService(dashRepo)
 
+	gin.SetMode(config.C.GINMode)
+
 	// 5. Handlers
 	authH := handler.NewAuthHandler(authSvc)
 	userH := handler.NewUserHandler(userRepo, auditRepo)
-	recH := handler.NewRecordHandler(recordSvc)
+	recH := handler.NewRecordHandler(recordSvc, auditRepo)
 	dashH := handler.NewDashboardHandler(dashSvc)
 	categoryH := handler.NewCategoryHandler(dashSvc)
 
 	// 6. Start server
-	r := router.SetupRouter(authH, userH, recH, dashH, categoryH)
-	log.Printf("server starting on :%s", config.C.ServerPort)
-	if err := r.Run(":" + config.C.ServerPort); err != nil {
-		log.Fatalf("server error: %v", err)
+	r := router.SetupRouter(database, config.C.RateLimitRPM, authH, userH, recH, dashH, categoryH)
+	server := &http.Server{Addr: ":" + config.C.ServerPort, Handler: r}
+
+	go func() {
+		log.Printf("server starting on :%s", config.C.ServerPort)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	// Graceful shutdown ensures in-flight requests complete before exit.
+	// In financial systems a mid-flight record create + audit log write
+	// must not be interrupted — both succeed or neither does.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Fatalf("server shutdown error: %v", err)
 	}
 }
