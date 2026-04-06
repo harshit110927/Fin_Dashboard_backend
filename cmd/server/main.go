@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/gin-gonic/gin"
 
 	"finance-dashboard/internal/config"
 	"finance-dashboard/internal/db"
@@ -41,6 +44,8 @@ func main() {
 	recordSvc := service.NewRecordService(recordRepo, auditRepo)
 	dashSvc := service.NewDashboardService(dashRepo)
 
+	gin.SetMode(config.C.GINMode)
+
 	// 5. Handlers
 	authH := handler.NewAuthHandler(authSvc)
 	userH := handler.NewUserHandler(userRepo, auditRepo)
@@ -54,7 +59,7 @@ func main() {
 
 	go func() {
 		log.Printf("server starting on :%s", config.C.ServerPort)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("server error: %v", err)
 		}
 	}()
@@ -63,9 +68,9 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	// Graceful shutdown ensures in-flight requests complete before the process
-	// exits. In financial systems this is critical — a mid-flight record create
-	// followed by an audit log write must not be interrupted mid-transaction.
+	// Graceful shutdown ensures in-flight requests complete before exit.
+	// In financial systems a mid-flight record create + audit log write
+	// must not be interrupted — both succeed or neither does.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

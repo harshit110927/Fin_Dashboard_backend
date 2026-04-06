@@ -175,8 +175,8 @@ All responses follow this envelope:
 
 ### Auth
 
-| GET  | `/health`                          | None    | Liveness probe with DB status |
-| GET  | `/api/v1/records/:id/history`      | `admin` | Full audit trail for a record |
+| GET  | `/health`                     | None    | Liveness probe + DB ping  |
+| GET  | `/api/v1/records/:id/history` | `admin` | Full audit trail for record |
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
@@ -379,16 +379,11 @@ Refresh tokens are stored as `SHA-256(token)` in the database — never the raw 
 Supabase free tier allows a maximum of 10 concurrent connections. The pool is set to `MaxOpenConns=10, MaxIdleConns=3, ConnMaxLifetime=5min` to respect this limit and avoid connection exhaustion under concurrent requests.
 
 ### 7. Migration Strategy
-
-Migrations use ordered raw SQL files executed via `psql` for maximum
-portability and zero additional tooling dependencies. Each file is
-idempotent (`IF NOT EXISTS`, `ON CONFLICT DO NOTHING`).
-
-**Tradeoff acknowledged:** In a production system this would use
-[goose](https://github.com/pressly/goose) or
-[golang-migrate](https://github.com/golang-migrate/migrate) for versioned
-rollback support and migration state tracking in the DB. That tooling was
-intentionally excluded here to keep the setup path simple and dependency-free.
+Raw SQL files via psql for zero extra dependencies. Each file is
+idempotent. In production this would use
+[goose](https://github.com/pressly/goose) for versioned rollback
+and migration state tracking in the DB — excluded here to keep
+setup dependency-free.
 
 ---
 

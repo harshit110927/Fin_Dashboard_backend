@@ -16,6 +16,7 @@ type Config struct {
 	JWTAccessExpiry, JWTRefreshExpiry                     time.Duration
 	ServerPort, AppEnv                                    string
 	RateLimitRPM                                          int
+	GINMode                                               string
 }
 
 var C Config
@@ -29,6 +30,7 @@ func Load() error {
 	re, _ := time.ParseDuration(getEnv("JWT_REFRESH_EXPIRY", "168h"))
 	rpmStr := getEnv("RATE_LIMIT_RPM", "100")
 	rpm, err := strconv.Atoi(rpmStr)
+	ginMode := getEnv("GIN_MODE", "release")
 	if err != nil || rpm <= 0 {
 		rpm = 100
 	}
@@ -45,6 +47,7 @@ func Load() error {
 		ServerPort:       getEnv("SERVER_PORT", "8080"),
 		AppEnv:           getEnv("APP_ENV", "development"),
 		RateLimitRPM:     rpm,
+		GINMode:          ginMode,
 	}
 	return nil
 }
